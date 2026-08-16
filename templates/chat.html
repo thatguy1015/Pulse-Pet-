@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PulsePet - Chat</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="/" class="logo">PulsePet</a>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/logout">Log out</a>
+        </div>
+    </nav>
+
+    <div class="chat-page">
+        <div class="chat-header">
+            <div>
+                <h1>PulsePet Chat</h1>
+                <p>Welcome, {{ user }}</p>
+            </div>
+
+            <div class="chat-actions">
+                <form method="POST" action="/clear_chat">
+                    <button type="submit" class="btn btn-secondary">Clear Chat</button>
+                </form>
+
+                <form method="POST" action="/clear_memory">
+                    <button type="submit" class="btn btn-danger">Clear Memory</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="chat-box" id="chat-box">
+            {% if history %}
+                {% for speaker, text in history %}
+                    {% if speaker == "user" %}
+                        <div class="message user-message">
+                            <strong>You:</strong> {{ text }}
+                        </div>
+                    {% else %}
+                        <div class="message bot-message">
+                            <strong>PulsePet:</strong> {{ text }}
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            {% else %}
+                <div class="message bot-message">
+                    <strong>PulsePet:</strong> Hi, I’m PulsePet. Tell me something you’d like me to remember.
+                </div>
+            {% endif %}
+        </div>
+
+        <form method="POST" class="chat-form">
+            <input type="text" name="message" placeholder="Type a message..." required autofocus>
+            <button type="submit" class="btn btn-primary">Send</button>
+        </form>
+    </div>
+
+    <script>
+        const chatBox = document.getElementById("chat-box");
+        chatBox.scrollTop = chatBox.scrollHeight;
+    </script>
+
+</body>
+</html>

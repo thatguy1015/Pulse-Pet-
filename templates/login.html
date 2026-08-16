@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PulsePet - Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="/" class="logo">PulsePet</a>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/register">Register</a>
+        </div>
+    </nav>
+
+    <div class="form-container">
+        <h1>Welcome back</h1>
+        <p>Log in to continue chatting with PulsePet.</p>
+
+        <form method="POST">
+            <label>Email</label>
+            <input type="email" name="email" required>
+
+            <label>Password</label>
+            <input type="password" name="password" required>
+
+            <br><br>
+            <button type="submit" class="btn btn-primary">Login</button>
+        </form>
+
+        <a href="/register" class="small-link">Don't have an account? Register here</a>
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PulsePet - AI Companion</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="/" class="logo">PulsePet</a>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            {% if logged_in %}
+                <a href="/chat">Chat</a>
+                <a href="/logout">Log out</a>
+            {% else %}
+                <a href="/login">Login</a>
+                <a href="/register">Register</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <section class="hero">
+        <div>
+            <h1>Your memory-driven AI companion.</h1>
+            <p>
+                PulsePet is a web-based AI companion prototype that remembers simple preferences,
+                keeps chat history, and creates more personal conversations over time.
+            </p>
+
+            <div class="button-row">
+                {% if logged_in %}
+                    <a href="/chat" class="btn btn-primary">Open Chat</a>
+                {% else %}
+                    <a href="/register" class="btn btn-primary">Create Account</a>
+                    <a href="/login" class="btn btn-secondary">Login</a>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="hero-card">
+            <div class="pet-icon">🐾</div>
+            <h2>Meet PulsePet</h2>
+            <p>
+                A small digital companion designed to remember what you tell it and respond
+                in a more natural, personalised way.
+            </p>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="cards">
+            <div class="card">
+                <h3>Persistent Memory</h3>
+                <p>PulsePet can store and recall simple user preferences such as likes and favourite colours.</p>
+            </div>
+
+            <div class="card">
+                <h3>AI Conversation</h3>
+                <p>General messages can be handled using AI-generated responses for more flexible interaction.</p>
+            </div>
+
+            <div class="card">
+                <h3>Future Embodiment</h3>
+                <p>The project can later be extended into VR or robotic forms using the same companion concept.</p>
+            </div>
+        </div>
+    </section>
+
+</body>
+</html>

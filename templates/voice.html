@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PulsePet - Voice Prototype</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="/" class="logo">PulsePet</a>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/chat">Chat</a>
+            <a href="/logout">Log out</a>
+        </div>
+    </nav>
+
+    <div class="chat-page">
+        <h1>PulsePet Voice Prototype</h1>
+        <p>Welcome, {{ user }}. Press start and speak to PulsePet.</p>
+
+        <div class="hero-card">
+            <div class="pet-icon">🐾</div>
+            <h2>Realtime Voice Mode</h2>
+            <p id="status">Status: not connected</p>
+
+            <div class="button-row">
+                <button id="startBtn" class="btn btn-primary">Start Voice</button>
+                <button id="stopBtn" class="btn btn-secondary" disabled>Stop Voice</button>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 20px;">
+            <h3>Prototype note</h3>
+            <p>
+                This is an experimental voice extension. The main PulsePet MVP remains the web chat,
+                memory, and AI response system.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let pc = null;
+        let localStream = null;
+        let dataChannel = null;
+
+        const startBtn = document.getElementById("startBtn");
+        const stopBtn = document.getElementById("stopBtn");
+        const statusText = document.getElementById("status");
+
+        function setStatus(message) {
+            statusText.textContent = "Status: " + message;
+        }
+
+        async function startVoice() {
+            try {
+                setStatus("requesting microphone permission");
+
+                const tokenResponse = await fetch("/realtime_token");
+                const tokenData = await tokenResponse.json();
+
+                if (!tokenResponse.ok) {
+                    console.error(tokenData);
+                    setStatus("failed to get realtime token");
+                    return;
+                }
+
+                const EPHEMERAL_KEY =
+                    tokenData.value ||
+                    tokenData.client_secret?.value ||
+                    tokenData.client_secret;
+
+                if (!EPHEMERAL_KEY) {
+                    console.error(tokenData);
+                    setStatus("token format not recognised");
+                    return;
+                }
+
+                pc = new RTCPeerConnection();
+
+                const audioElement = document.createElement("audio");
+                audioElement.autoplay = true;
+
+                pc.ontrack = (event) => {
+                    audioElement.srcObject = event.streams[0];
+                };
+
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+                dataChannel = pc.createDataChannel("oai-events");
+
+                dataChannel.addEventListener("open", () => {
+                    setStatus("connected — speak to PulsePet");
+
+                    const greetingEvent = {
+                        type: "conversation.item.create",
+                        item: {
+                            type: "message",
+                            role: "user",
+                            content: [
+                                {
+                                    type: "input_text",
+                                    text: "Say hello as PulsePet in one short sentence."
+                                }
+                            ]
+                        }
+                    };
+
+                    dataChannel.send(JSON.stringify(greetingEvent));
+                    dataChannel.send(JSON.stringify({ type: "response.create" }));
+                });
+
+                dataChannel.addEventListener("message", (event) => {
+                    console.log("Realtime event:", JSON.parse(event.data));
+                });
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                const sdpResponse = await fetch("https://api.openai.com/v1/realtime/calls", {
+                    method: "POST",
+                    body: offer.sdp,
+                    headers: {
+                        "Authorization": `Bearer ${EPHEMERAL_KEY}`,
+                        "Content-Type": "application/sdp"
+                    }
+                });
+
+                if (!sdpResponse.ok) {
+                    const errorText = await sdpResponse.text();
+                    console.error(errorText);
+                    setStatus("failed to connect to realtime API");
+                    return;
+                }
+
+                const answer = {
+                    type: "answer",
+                    sdp: await sdpResponse.text()
+                };
+
+                await pc.setRemoteDescription(answer);
+
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+
+            } catch (error) {
+                console.error(error);
+                setStatus("error starting voice mode");
+            }
+        }
+
+        function stopVoice() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+
+            if (pc) {
+                pc.close();
+            }
+
+            pc = null;
+            localStream = null;
+            dataChannel = null;
+
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            setStatus("disconnected");
+        }
+
+        startBtn.addEventListener("click", startVoice);
+        stopBtn.addEventListener("click", stopVoice);
+    </script>
+
+</body>
+</html>
