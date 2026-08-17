@@ -21,6 +21,18 @@ The project also allowed me to investigate how AI software could later connect t
 * Clear Chat and Clear Memory controls
 * Experimental voice and avatar extensions developed alongside the web MVP
 
+## Unity and Dobot extensions
+
+The core web application was extended with visual and physical interaction prototypes.
+
+* **Unity avatar:** Created a stylised PulsePet avatar with idle and mouth animations to give the companion a visual presence.
+* **Dobot Magician controller:** Implemented `dobot_controller.py` to connect PulsePet to a Dobot Magician robotic arm.
+* **Context-based gestures:** Added wave, thinking and rest gestures that could be triggered by the companion's interaction state.
+* **Graceful fallback:** The web application remains usable when the physical robot is unavailable.
+
+These extensions explored how a conversational AI system could move beyond a text interface into visual, voice and physical interaction.
+
+
 ## How it works
 
 1. A user creates an account and logs into the application.
@@ -50,7 +62,10 @@ The evaluation focused on authentication, memory storage and recall, AI response
 * HTML and CSS
 * JavaScript
 * Unity and Blender for experimental avatar work
-
+* Unity
+* Blender
+* Dobot Magician controller
+ 
 ## Running locally
 
 ```bash
@@ -70,4 +85,5 @@ The application requires an OpenAI API key. API keys and private configuration f
 
 ## Project status
 
+PulsePet's Flask and SQLite web application is the core MVP. It was successfully extended with a Unity avatar and a Dobot Magician controller supporting context-based gestures. The physical hardware is optional, so the main application can still operate in web-only mode when the robot is unavailable.
 The Flask and SQLite web application is the evaluated core MVP. Voice, avatar and physical-device work were explored as extensions rather than required parts of the main application.
