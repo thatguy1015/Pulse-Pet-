@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PulsePet - Voice Prototype</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+    <style>
+        .voice-page {
+            width: min(96vw, 1500px);
+            margin: 32px auto;
+            background: white;
+            border: 1px solid #d7e8ff;
+            border-radius: 28px;
+            padding: 34px;
+            box-shadow: 0 12px 34px rgba(0, 0, 0, 0.05);
+        }
+
+        .voice-title-row h1 {
+            margin-bottom: 10px;
+        }
+
+        .voice-workspace {
+            display: grid;
+            grid-template-columns: 260px minmax(520px, 1fr) 360px;
+            gap: 22px;
+            align-items: stretch;
+            margin-top: 24px;
+        }
+
+        .voice-control-panel,
+        .avatar-panel,
+        .transcript-panel {
+            background: #ffffff;
+            border: 1px solid #d7e8ff;
+            border-radius: 22px;
+            padding: 22px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+        }
+
+        .voice-control-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .voice-control-panel .pet-icon {
+            width: 130px;
+            height: 130px;
+            font-size: 56px;
+            margin: 0 auto 24px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #258be8;
+            border-radius: 50%;
+        }
+
+        .voice-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .voice-buttons .btn {
+            width: 100%;
+        }
+
+        .voice-help-text {
+            margin-top: 18px;
+            color: #4a6078;
+            line-height: 1.5;
+            font-size: 0.95rem;
+        }
+
+        .unity-frame {
+            width: 100%;
+            height: 560px;
+            border-radius: 18px;
+            overflow: hidden;
+            background: #eef4ff;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+        }
+
+        .unity-frame iframe {
+            display: block;
+            width: 100%;
+            height: 560px;
+            border: none;
+            overflow: hidden;
+        }
+
+        .voice-transcript-box {
+            height: 560px;
+            overflow-y: auto;
+            padding: 18px;
+        }
+
+        .prototype-note {
+            margin-top: 22px;
+        }
+
+        @media (max-width: 1200px) {
+            .voice-workspace {
+                grid-template-columns: 1fr;
+            }
+
+            .unity-frame,
+            .unity-frame iframe,
+            .voice-transcript-box {
+                height: 430px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <nav class="navbar">
+        <a href="/" class="logo">PulsePet</a>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/chat">Chat</a>
+            <a href="/voice">Voice</a>
+            <a href="/logout">Log out</a>
+        </div>
+    </nav>
+
+    <div class="voice-page">
+        <div class="voice-title-row">
+            <div>
+                <h1>PulsePet Voice Prototype</h1>
+                <p>Welcome, {{ user }}. Speak to PulsePet and watch the avatar respond.</p>
+            </div>
+        </div>
+
+        <div class="voice-workspace">
+
+            <div class="voice-control-panel">
+                <div class="pet-icon">🐾</div>
+
+                <h2>Realtime Voice</h2>
+                <p id="status">Status: not connected</p>
+
+                <div class="button-row voice-buttons">
+                    <button id="startBtn" class="btn btn-primary" type="button">Start Voice</button>
+                    <button id="stopBtn" class="btn btn-secondary" type="button" disabled>Stop Voice</button>
+                    <button id="clearTranscriptBtn" class="btn btn-secondary" type="button">Clear Transcript</button>
+                </div>
+
+                <p class="voice-help-text">
+                    Voice mode shares memory with the main text chat. The transcript stays separate here.
+                </p>
+            </div>
+
+            <div class="avatar-panel">
+                <h3>PulsePet Avatar</h3>
+
+                <div class="unity-frame">
+                    <iframe
+                        id="unityAvatarFrame"
+                        src="{{ url_for('static', filename='unity/index.html') }}"
+                        scrolling="no">
+                    </iframe>
+                </div>
+            </div>
+
+            <div class="transcript-panel">
+                <h3>Live transcript</h3>
+
+                <div id="voiceLog" class="chat-box voice-transcript-box">
+                    {% if voice_history %}
+                        {% for speaker, text in voice_history %}
+                            {% if speaker == "user" %}
+                                <div class="message user-message">
+                                    <strong>You:</strong> {{ text }}
+                                </div>
+                            {% else %}
+                                <div class="message bot-message">
+                                    <strong>PulsePet:</strong> {{ text }}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        <div class="message bot-message">
+                            <strong>PulsePet:</strong> Voice mode is ready. Start the session and ask me something.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+
+        <div class="card prototype-note">
+            <h3>Prototype note</h3>
+            <p>
+                This voice mode uses the same PulsePet memory system as the text chat.
+                The main chat and voice transcript are shown separately, while memory is shared between both.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let pc = null;
+        let localStream = null;
+        let dataChannel = null;
+        let assistantTranscript = "";
+        let isConnected = false;
+
+        let avatarTalking = false;
+        let avatarStopTimer = null;
+
+        let audioContext = null;
+        let audioAnalyser = null;
+        let audioMeterFrame = null;
+        let lastRemoteAudioTime = 0;
+
+        const startBtn = document.getElementById("startBtn");
+        const stopBtn = document.getElementById("stopBtn");
+        const clearTranscriptBtn = document.getElementById("clearTranscriptBtn");
+        const statusText = document.getElementById("status");
+        const voiceLog = document.getElementById("voiceLog");
+        const unityFrame = document.getElementById("unityAvatarFrame");
+
+        function setStatus(message) {
+            statusText.textContent = "Status: " + message;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement("div");
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function addLogMessage(speaker, text) {
+            if (!text || !text.trim()) return;
+
+            const cleanText = text.trim();
+            const existingMessages = voiceLog.querySelectorAll(".message");
+            const lastMessage = existingMessages[existingMessages.length - 1];
+
+            if (lastMessage && lastMessage.textContent.includes(cleanText)) {
+                return;
+            }
+
+            const div = document.createElement("div");
+
+            div.className = speaker === "user"
+                ? "message user-message"
+                : "message bot-message";
+
+            div.innerHTML = `<strong>${speaker === "user" ? "You" : "PulsePet"}:</strong> ${escapeHtml(cleanText)}`;
+            voiceLog.appendChild(div);
+            voiceLog.scrollTop = voiceLog.scrollHeight;
+        }
+
+        function sendUnityCommand(commandName) {
+            if (!unityFrame || !unityFrame.contentWindow) {
+                console.warn("Unity iframe not ready");
+                return;
+            }
+
+            const unityWindow = unityFrame.contentWindow;
+
+            try {
+                if (unityWindow.pulsePetUnityInstance) {
+                    unityWindow.pulsePetUnityInstance.SendMessage(
+                        "PulsePet_Avatar_Final",
+                        commandName
+                    );
+
+                    console.log("Direct Unity command:", commandName);
+                    return;
+                }
+
+                unityWindow.postMessage({
+                    type: "pulsepet-command",
+                    command: commandName
+                }, "*");
+
+                console.log("Unity command sent by postMessage:", commandName);
+
+            } catch (error) {
+                console.error("Unity command failed:", commandName, error);
+            }
+        }
+
+        function startAvatarTalking() {
+            if (avatarStopTimer) {
+                clearTimeout(avatarStopTimer);
+                avatarStopTimer = null;
+            }
+
+            if (!avatarTalking) {
+                avatarTalking = true;
+                sendUnityCommand("StartTalking");
+            }
+        }
+
+        function scheduleStopAvatarTalking(delayMs = 1200) {
+            if (avatarStopTimer) {
+                clearTimeout(avatarStopTimer);
+            }
+
+            avatarStopTimer = setTimeout(() => {
+                stopAvatarTalkingNow();
+            }, delayMs);
+        }
+
+        function stopAvatarTalkingNow() {
+            if (avatarStopTimer) {
+                clearTimeout(avatarStopTimer);
+                avatarStopTimer = null;
+            }
+
+            if (avatarTalking) {
+                avatarTalking = false;
+                sendUnityCommand("StopTalking");
+            }
+        }
+
+        function inferVoiceEventType(transcript) {
+            const text = transcript.toLowerCase().trim();
+
+            if (
+                text.includes("i like") ||
+                text.includes("i love") ||
+                text.includes("i also like") ||
+                text.includes("my favourite colour is") ||
+                text.includes("my favorite colour is") ||
+                text.includes("my favourite color is") ||
+                text.includes("my favorite color is")
+            ) {
+                return "memory_saved";
+            }
+
+            if (
+                text.includes("what do i like") ||
+                text.includes("what did i say i like") ||
+                text.includes("what do you remember") ||
+                text.includes("what do you know about me") ||
+                text.includes("what is my favourite colour") ||
+                text.includes("what is my favorite colour") ||
+                text.includes("what is my favourite color") ||
+                text.includes("what is my favorite color")
+            ) {
+                return "memory_recalled";
+            }
+
+            if (
+                text.includes("clear memory") ||
+                text.includes("clear my memory") ||
+                text.includes("forget my memory")
+            ) {
+                return "memory_cleared";
+            }
+
+            return "general_reply";
+        }
+
+        function triggerAvatarReaction(eventType) {
+            console.log("Avatar reaction event:", eventType);
+
+            if (eventType === "memory_saved") {
+                sendUnityCommand("PlayHappy");
+            } else if (eventType === "memory_recalled") {
+                sendUnityCommand("PlayRecallThinking");
+            } else if (eventType === "memory_cleared") {
+                sendUnityCommand("PlayRecallThinking");
+            }
+        }
+
+        function startRemoteAudioMeter(stream) {
+            stopRemoteAudioMeter();
+
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(stream);
+
+            audioAnalyser = audioContext.createAnalyser();
+            audioAnalyser.fftSize = 2048;
+
+            source.connect(audioAnalyser);
+
+            const data = new Uint8Array(audioAnalyser.fftSize);
+
+            function checkVolume() {
+                if (!audioAnalyser) return;
+
+                audioAnalyser.getByteTimeDomainData(data);
+
+                let sum = 0;
+
+                for (let i = 0; i < data.length; i++) {
+                    const value = (data[i] - 128) / 128;
+                    sum += value * value;
+                }
+
+                const volume = Math.sqrt(sum / data.length);
+                const now = performance.now();
+
+                const speechThreshold = 0.008;
+
+                if (volume > speechThreshold) {
+                    lastRemoteAudioTime = now;
+                    startAvatarTalking();
+                }
+
+                if (avatarTalking && now - lastRemoteAudioTime > 700) {
+                    stopAvatarTalkingNow();
+                }
+
+                audioMeterFrame = requestAnimationFrame(checkVolume);
+            }
+
+            audioContext.resume();
+            checkVolume();
+        }
+
+        function stopRemoteAudioMeter() {
+            if (audioMeterFrame) {
+                cancelAnimationFrame(audioMeterFrame);
+                audioMeterFrame = null;
+            }
+
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+
+            audioAnalyser = null;
+            lastRemoteAudioTime = 0;
+        }
+
+        async function syncUserTranscript(transcript) {
+            try {
+                const response = await fetch("/api/voice_transcript", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ transcript })
+                });
+
+                const data = await response.json();
+                console.log("Voice transcript synced:", data);
+
+                let eventType = data.event_type || "general_reply";
+
+                if (eventType === "general_reply") {
+                    eventType = inferVoiceEventType(transcript);
+                }
+
+                triggerAvatarReaction(eventType);
+
+                return data;
+
+            } catch (error) {
+                console.error("Failed to sync user transcript:", error);
+
+                const eventType = inferVoiceEventType(transcript);
+                triggerAvatarReaction(eventType);
+
+                return null;
+            }
+        }
+
+        async function syncAssistantReply(reply) {
+            try {
+                const response = await fetch("/api/voice_bot_reply", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ reply })
+                });
+
+                const data = await response.json();
+                console.log("Assistant reply synced:", data);
+                return data;
+
+            } catch (error) {
+                console.error("Failed to sync assistant reply:", error);
+                return null;
+            }
+        }
+
+        async function startVoice() {
+            try {
+                setStatus("requesting microphone permission");
+
+                const tokenResponse = await fetch("/realtime_token");
+                const tokenData = await tokenResponse.json();
+
+                if (!tokenResponse.ok) {
+                    console.error(tokenData);
+                    setStatus(tokenData.error || "failed to get realtime token");
+                    return;
+                }
+
+                const EPHEMERAL_KEY =
+                    tokenData.value ||
+                    tokenData.client_secret?.value ||
+                    tokenData.client_secret;
+
+                if (!EPHEMERAL_KEY) {
+                    console.error("Unrecognised token response:", tokenData);
+                    setStatus("token format not recognised");
+                    return;
+                }
+
+                pc = new RTCPeerConnection();
+
+                const audioElement = document.createElement("audio");
+                audioElement.autoplay = true;
+                audioElement.playsInline = true;
+
+                pc.ontrack = (event) => {
+                    const remoteStream = event.streams[0];
+
+                    audioElement.srcObject = remoteStream;
+                    audioElement.play().catch((error) => {
+                        console.warn("Audio autoplay warning:", error);
+                    });
+
+                    startRemoteAudioMeter(remoteStream);
+                };
+
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+                dataChannel = pc.createDataChannel("oai-events");
+
+                dataChannel.addEventListener("open", () => {
+                    isConnected = true;
+                    setStatus("connected — speak to PulsePet");
+
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+
+                    const greetingEvent = {
+                        type: "conversation.item.create",
+                        item: {
+                            type: "message",
+                            role: "user",
+                            content: [
+                                {
+                                    type: "input_text",
+                                    text: "Say hello as PulsePet in one short sentence."
+                                }
+                            ]
+                        }
+                    };
+
+                    dataChannel.send(JSON.stringify(greetingEvent));
+                    dataChannel.send(JSON.stringify({ type: "response.create" }));
+                });
+
+                dataChannel.addEventListener("message", async (event) => {
+                    const realtimeEvent = JSON.parse(event.data);
+                    console.log("Realtime event:", realtimeEvent);
+
+                    if (
+                        realtimeEvent.type === "conversation.item.input_audio_transcription.completed" &&
+                        realtimeEvent.transcript
+                    ) {
+                        const transcript = realtimeEvent.transcript.trim();
+
+                        addLogMessage("user", transcript);
+                        await syncUserTranscript(transcript);
+                    }
+
+                    if (
+                        realtimeEvent.type === "response.output_audio_transcript.delta" &&
+                        realtimeEvent.delta
+                    ) {
+                        assistantTranscript += realtimeEvent.delta;
+
+                        startAvatarTalking();
+                        scheduleStopAvatarTalking(1200);
+                    }
+
+                    if (
+                        realtimeEvent.type === "response.output_audio_transcript.done"
+                    ) {
+                        const finalReply =
+                            realtimeEvent.transcript?.trim() ||
+                            assistantTranscript.trim();
+
+                        if (finalReply) {
+                            addLogMessage("bot", finalReply);
+                            await syncAssistantReply(finalReply);
+                        }
+
+                        assistantTranscript = "";
+                        scheduleStopAvatarTalking(1400);
+                    }
+
+                    if (realtimeEvent.type === "response.done") {
+                        scheduleStopAvatarTalking(1400);
+                    }
+
+                    if (realtimeEvent.type === "error") {
+                        console.error("Realtime API error:", realtimeEvent);
+                        setStatus("Realtime error — check console");
+                        stopAvatarTalkingNow();
+                    }
+                });
+
+                dataChannel.addEventListener("close", () => {
+                    isConnected = false;
+                    setStatus("data channel closed");
+                    stopRemoteAudioMeter();
+                    stopAvatarTalkingNow();
+                });
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                const sdpResponse = await fetch("https://api.openai.com/v1/realtime/calls", {
+                    method: "POST",
+                    body: offer.sdp,
+                    headers: {
+                        "Authorization": `Bearer ${EPHEMERAL_KEY}`,
+                        "Content-Type": "application/sdp"
+                    }
+                });
+
+                if (!sdpResponse.ok) {
+                    const errorText = await sdpResponse.text();
+                    console.error(errorText);
+                    setStatus("failed to connect to realtime API");
+                    stopVoice();
+                    return;
+                }
+
+                const answer = {
+                    type: "answer",
+                    sdp: await sdpResponse.text()
+                };
+
+                await pc.setRemoteDescription(answer);
+
+            } catch (error) {
+                console.error(error);
+                setStatus("error starting voice mode");
+                stopVoice();
+            }
+        }
+
+        function stopVoice() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+
+            if (pc) {
+                pc.close();
+            }
+
+            pc = null;
+            localStream = null;
+            dataChannel = null;
+            assistantTranscript = "";
+            isConnected = false;
+
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            setStatus("disconnected");
+
+            stopRemoteAudioMeter();
+            stopAvatarTalkingNow();
+        }
+
+        async function clearVoiceTranscript() {
+            try {
+                await fetch("/api/voice_transcript/clear", {
+                    method: "POST"
+                });
+
+                voiceLog.innerHTML = `
+                    <div class="message bot-message">
+                        <strong>PulsePet:</strong> Voice transcript cleared.
+                    </div>
+                `;
+
+            } catch (error) {
+                console.error("Failed to clear voice transcript:", error);
+            }
+        }
+
+        startBtn.addEventListener("click", startVoice);
+        stopBtn.addEventListener("click", stopVoice);
+        clearTranscriptBtn.addEventListener("click", clearVoiceTranscript);
+
+        window.addEventListener("beforeunload", () => {
+            if (isConnected) {
+                stopVoice();
+            }
+        });
+
+        voiceLog.scrollTop = voiceLog.scrollHeight;
+    </script>
+
+</body>
+</html>
